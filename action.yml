@@ -37,8 +37,28 @@ runs:
         aws_access_key_id=${{inputs.AWS_ACCESS_KEY_ID_CHINA}}
         aws_secret_access_key=${{inputs.AWS_SECRET_ACCESS_KEY_CHINA}}
         EOF
-        yarn --frozen-lockfile
-        environment_with_suffix=${{inputs.environment}}
-        # remove -canary suffix in case it exists
-        yarn deploy:${environment_with_suffix%-canary}
-        rm ~/.aws/credentials
+        environment_with_suffix="${{ inputs.environment }}"
+        environment="${environment_with_suffix%-canary}"
+
+        case "$environment" in
+          dev|test|prod|china) ;;
+          *)
+            echo "Unsupported environment: $environment"
+            exit 1
+            ;;
+        esac
+
+        credentials_file=~/.aws/credentials
+        trap 'rm -f "$credentials_file"' EXIT
+
+        if [ -f package-lock.json ]; then
+          npm ci
+          npm run "deploy:$environment"
+        elif [ -f yarn.lock ]; then
+          corepack enable
+          yarn install --frozen-lockfile
+          yarn "deploy:$environment"
+        else
+          echo "No supported lockfile found. Expected package-lock.json or yarn.lock."
+          exit 1
+        fi
